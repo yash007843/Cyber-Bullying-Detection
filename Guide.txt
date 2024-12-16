@@ -1,0 +1,166 @@
+To integrate this folder with Instagram and process comments, you'll need to use Instagram's API (specifically the Instagram Graph API) to fetch comments from posts, filter them using your SDK, and then potentially display or process the filtered comments. Here's a step-by-step guide to achieve this:
+
+### 1. **Set Up Instagram API Access**
+   - **Create a Facebook Developer Account**: Go to the [Facebook Developer Portal](https://developers.facebook.com/), and create an account if you don't have one.
+   - **Create an Instagram App**: Create a new app in the Facebook Developer portal. You'll need to set up an Instagram Business Account and connect it to your Facebook page.
+   - **Get Access Token**: To interact with the Instagram API, you'll need an access token. This token will allow you to make requests on behalf of the Instagram account (and access their posts and comments).
+
+### 2. **Install Required Packages**
+   - You will need the `axios` or `node-fetch` package to make HTTP requests to Instagram's API. If you're using `node-fetch`, it's already installed, but if you don't have `axios`, you can install it:
+
+     ```bash
+     npm install axios
+     ```
+
+### 3. **Update Your `.env` File**
+   Add your Instagram access token and other required details to the `.env` file.
+
+   Example `.env`:
+
+   ```
+   HUGGING_FACE_API_KEY=your_hugging_face_api_key
+   INSTAGRAM_ACCESS_TOKEN=your_instagram_access_token
+   INSTAGRAM_BUSINESS_ACCOUNT_ID=your_instagram_business_account_id
+   ```
+
+### 4. **Modify the Code to Fetch Comments from Instagram**
+   You will need to update `app.js` to fetch comments from Instagram using the Instagram Graph API. Here's an updated version of `app.js` with the required changes:
+
+   **app.js**
+   ```javascript
+   import dotenv from 'dotenv';
+   import fs from 'fs';
+   import fetch from 'node-fetch';
+   import { filterComments } from './filter.js';
+
+   dotenv.config();
+
+   const HUGGING_FACE_API_KEY = process.env.HUGGING_FACE_API_KEY;
+   const INSTAGRAM_ACCESS_TOKEN = process.env.INSTAGRAM_ACCESS_TOKEN;
+   const INSTAGRAM_BUSINESS_ACCOUNT_ID = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+
+   const inputFilePath = './data/input.json';
+   const outputFilePath = './data/output.json';
+
+   const getInstagramComments = async () => {
+     const postId = 'your_post_id'; // The Instagram post ID to fetch comments for
+     const url = `https://graph.facebook.com/v12.0/${postId}/comments?access_token=${INSTAGRAM_ACCESS_TOKEN}`;
+
+     try {
+       const response = await fetch(url);
+       const data = await response.json();
+       if (data.error) {
+         console.error('Error fetching comments:', data.error);
+         return [];
+       }
+       return data.data;
+     } catch (error) {
+       console.error('Error connecting to Instagram API:', error);
+       return [];
+     }
+   };
+
+   const processComments = async () => {
+     const instagramComments = await getInstagramComments();
+     const filteredComments = await filterComments(instagramComments);
+
+     fs.writeFile(outputFilePath, JSON.stringify(filteredComments, null, 2), (err) => {
+       if (err) {
+         console.error('Error writing output file:', err);
+       } else {
+         console.log('Filtered comments saved to:', outputFilePath);
+       }
+     });
+   };
+
+   processComments();
+   ```
+
+### 5. **Update `filter.js` to Match Instagram Comment Format**
+   The Instagram API returns comments in a different format than your `input.json`. Specifically, the comments will have fields like `id` and `text`, which need to be processed similarly to your existing `input.json`. 
+
+   Here's how you can update `filter.js` to match the Instagram data structure:
+
+   **filter.js**
+   ```javascript
+   import fetch from 'node-fetch';
+   import dotenv from 'dotenv';
+
+   dotenv.config();
+
+   async function filterComments(comments) {
+     const API_KEY = process.env.HUGGING_FACE_API_KEY;
+     const modelEndpoint = 'https://api-inference.huggingface.co/models/unitary/toxic-bert';
+     const filteredComments = [];
+     const maxRetries = 5;
+     const retryDelay = 20000;
+     const toxicityThreshold = 0.5;
+
+     for (const comment of comments) {
+       let attempt = 0;
+       let success = false;
+
+       while (attempt < maxRetries && !success) {
+         try {
+           const response = await fetch(modelEndpoint, {
+             method: 'POST',
+             headers: {
+               'Authorization': `Bearer ${API_KEY}`,
+               'Content-Type': 'application/json',
+             },
+             body: JSON.stringify({ inputs: comment.text }),
+           });
+
+           const result = await response.json();
+
+           if (result.error && result.error.includes('currently loading')) {
+             console.log(`Model is loading. Retrying in ${retryDelay / 1000} seconds...`);
+             await new Promise(resolve => setTimeout(resolve, retryDelay));
+             attempt++;
+             continue;
+           }
+
+           let isToxic = false;
+           for (const label of result[0]) {
+             if (label.label === 'toxic' && label.score > toxicityThreshold) {
+               isToxic = true;
+               break;
+             }
+           }
+
+           if (!isToxic) {
+             filteredComments.push(comment);
+           } else {
+             console.log(`Filtered out comment with id ${comment.id}:`, comment.text);
+           }
+
+           success = true;
+         } catch (error) {
+           console.error('Error communicating with Hugging Face API:', error);
+           break;
+         }
+       }
+
+       if (attempt === maxRetries) {
+         console.error(`Max retries reached for comment with id ${comment.id}`);
+       }
+     }
+
+     return filteredComments;
+   }
+
+   export { filterComments };
+   ```
+
+### 6. **Test the System**
+   - Run the system with the command: `node app.js`.
+   - Check the `output.json` file to ensure the filtered comments are saved correctly.
+
+### 7. **Deploy or Set Up for Clients**
+   If clients (such as brands or influencers) want to use this system, you could:
+   - Provide them with an easy way to get and input their Instagram access tokens.
+   - Package the system in a way that they can easily integrate with their Instagram accounts.
+   - Provide a user-friendly interface to set up and display filtered comments.
+
+### Conclusion
+By following these steps, you'll be able to integrate your SDK with Instagram, retrieve comments, process them for toxicity, and return the filtered results. This will involve working with Instagram's API, authentication, and adapting the SDK for real-world use on Instagram posts.

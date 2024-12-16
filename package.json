@@ -1,0 +1,13 @@
+{
+  "name": "cyberbullying-sdk",
+  "version": "1.0.0",
+  "description": "SDK for filtering toxic comments",
+  "main": "src/index.js",
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "node-fetch": "^2.6.1"
+  },
+  "devDependencies": {},
+  "author": "Prenesh",
+  "license": "MIT"
+}
